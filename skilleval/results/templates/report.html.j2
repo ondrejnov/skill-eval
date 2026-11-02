@@ -1,0 +1,321 @@
+{#- report.html – soběstačný (inline CSS/JS), autoescape zapnutý; data z report.build_view -#}
+{% macro meter(value, cls, tick=None) -%}
+<span class="meter {{ cls }}" aria-hidden="true"><span style="width:{{ width(value) }}"></span>{% if tick is not none %}<i class="tick" style="left:{{ width(tick) }}"></i>{% endif %}</span>
+{%- endmacro %}
+{% macro clip(c, cls="") -%}
+{% if c.full %}
+<details class="clip"><summary><pre class="{{ cls }}">{{ c.preview }}</pre></summary><pre class="{{ cls }}">{{ c.full }}</pre></details>
+{% else %}
+<pre class="{{ cls }}">{{ c.preview }}</pre>
+{% endif %}
+{% if c.truncated %}<div class="muted">… truncated in the report</div>{% endif %}
+{%- endmacro %}
+{% macro trace_view(t) -%}
+{% if not t.available %}
+<div class="trace-missing muted">Trace not available{% if t.reason %} — {{ t.reason }}{% endif %}{% if t.path %} <span class="mono">({{ t.path }})</span>{% endif %}</div>
+{% else %}
+<details class="trace">
+<summary><span class="trace-title">Trace</span> <span class="muted num">{{ t.events|length }} events · {{ t.tool_calls }} tool calls{% if t.highlights %} · <span class="hl-count">{{ t.highlights }} injected</span>{% endif %}</span></summary>
+<div class="trace-tools"><label><input type="checkbox" class="only-tools"> tool calls only</label><span class="muted mono">{{ t.path }}</span></div>
+<ol class="timeline">
+{% for e in t.events %}
+<li class="ev ev-{{ e.kind }}{% if e.highlight %} ev-hl{% endif %}{% if e.is_error %} ev-err{% endif %}">
+{% if e.kind == "tool" %}
+<details class="tool">
+<summary><span class="ev-kind">tool</span> <span class="tool-name">{{ e.title }}</span>{% if e.server %} <span class="muted mono">{{ e.server }}</span>{% endif %}
+{% if e.source %}<span class="src src-{{ e.source }}">{{ e.source }}</span>{% endif %}
+{% if e.is_error %}<span class="chip chip-fail">error</span>{% endif %}
+{% if e.pending %}<span class="muted">no result</span>{% endif %}</summary>
+<div class="tool-io">
+{% if e.input_json %}<div class="io-label">Input</div>{{ clip(e.input_json, "json") }}{% endif %}
+{% if e.output %}<div class="io-label">Output{% if e.source %} <span class="muted">(from {{ e.source }}, not the server)</span>{% endif %}</div>{{ clip(e.output) }}{% endif %}
+</div>
+</details>
+{% elif e.kind == "init" %}
+<details><summary><span class="ev-kind">system</span> init {% for m in e.meta %}<span class="muted">· {{ m }}</span> {% endfor %}</summary>{% if e.body %}{{ clip(e.body, "json") }}{% endif %}</details>
+{% elif e.kind == "result" %}
+<span class="ev-kind">result</span> {{ e.title }} {% for m in e.meta %}<span class="muted">· {{ m }}</span> {% endfor %}
+{% if e.body %}{{ clip(e.body) }}{% endif %}
+{% else %}
+<span class="ev-kind">{{ e.title if e.kind in ("skilleval", "system", "raw") else e.kind }}</span>
+{% if e.body %}{{ clip(e.body, "json" if e.kind in ("skilleval", "system", "raw") else "") }}{% endif %}
+{% endif %}
+</li>
+{% endfor %}
+</ol>
+{% if t.truncated %}<div class="muted">… more events omitted</div>{% endif %}
+</details>
+{% endif %}
+{%- endmacro %}
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Eval report — {{ v.title }}</title>
+<style>
+:root{--plane:#f9f9f7;--surface:#fcfcfb;--ink:#0b0b0b;--ink-2:#52514e;--ink-3:#6b6a64;--hairline:rgba(11,11,11,.10);
+  --grid:#e1e0d9;--inset:rgba(11,11,11,.04);--accent:#2a78d6;--base-fill:#6b6a64;--delta-good:#006300;--good:#067d06;
+  --warning:#8a6100;--critical:#d03b3b;--hl:rgba(250,178,25,.13);--mock:#7a4fd0;color-scheme:light dark}
+@media (prefers-color-scheme:dark){:root{--plane:#0d0d0d;--surface:#1a1a19;--ink:#fff;--ink-2:#c3c2b7;--ink-3:#898781;
+  --hairline:rgba(255,255,255,.10);--grid:#2c2c2a;--inset:rgba(255,255,255,.05);--accent:#3987e5;--base-fill:#898781;
+  --delta-good:#0ca30c;--good:#0ca30c;--warning:#fab219;--critical:#e06c6c;--hl:rgba(250,178,25,.10);--mock:#b293f0}}
+*{box-sizing:border-box}
+body{margin:0;background:var(--plane);color:var(--ink);font:14px/1.55 system-ui,-apple-system,"Segoe UI",sans-serif;
+  -webkit-text-size-adjust:100%}
+.wrap{max-width:960px;margin:0 auto;padding:40px 24px 64px;display:flex;flex-direction:column;gap:20px}
+.eyebrow{font-size:11px;font-weight:600;letter-spacing:.08em;text-transform:uppercase;color:var(--ink-3)}
+header h1{margin:2px 0 0;font-size:24px;font-weight:600;line-height:1.25}
+.verdict{margin:6px 0 0;font-size:15px}
+.meta{display:flex;flex-wrap:wrap;gap:6px 14px;margin-top:8px;color:var(--ink-2);font-size:13px}
+.banner{display:flex;gap:8px;padding:10px 14px;border-radius:8px;border:1px solid var(--hairline);
+  background:var(--surface);font-size:13px}
+.chip-warn{color:var(--warning);font-weight:600;white-space:nowrap}
+.tiles{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:12px}
+.tile{background:var(--surface);border:1px solid var(--hairline);border-radius:10px;padding:14px 16px;
+  display:flex;flex-direction:column;gap:4px}
+.tile .label{font-size:11px;font-weight:600;letter-spacing:.06em;text-transform:uppercase;color:var(--ink-3)}
+.tile .value{font-size:26px;font-weight:600;font-variant-numeric:tabular-nums;line-height:1.1}
+.tile.hero .value{font-family:Georgia,"Times New Roman",serif;font-weight:400;font-size:44px}
+.tile .sub{font-size:12px;color:var(--ink-2)}
+.toolbar{display:flex;gap:8px;justify-content:flex-end}
+button{font:12px system-ui,-apple-system,"Segoe UI",sans-serif;color:var(--ink-2);background:var(--surface);
+  border:1px solid var(--hairline);border-radius:6px;padding:4px 10px;cursor:pointer}
+button:hover{color:var(--ink)}
+button:focus-visible,summary:focus-visible{outline:2px solid var(--accent);outline-offset:1px}
+.case{background:var(--surface);border:1px solid var(--hairline);border-radius:10px;padding:18px 20px;
+  display:flex;flex-direction:column;gap:10px}
+.case-regressed{border-left:3px solid var(--critical)}
+.case-head{display:flex;align-items:baseline;gap:10px;flex-wrap:wrap}
+.case-head h2{margin:0;font-size:16px;font-weight:600}
+.spacer{flex:1}
+.case-score{font-size:15px;font-weight:600}
+.mono{font:12px ui-monospace,"SF Mono",Menlo,Consolas,monospace}
+.num{font-variant-numeric:tabular-nums}
+.muted{color:var(--ink-3);font-size:12px}
+.note{font-size:12px;color:var(--ink-2)}
+.tags{display:flex;gap:6px;flex-wrap:wrap}
+.meter{display:inline-block;position:relative;width:120px;height:6px;border-radius:4px;background:var(--grid);
+  vertical-align:middle}
+.meter>span{display:block;height:100%;border-radius:4px;max-width:100%}
+.meter .tick{position:absolute;top:-3px;bottom:-3px;width:2px;margin-left:-1px;background:var(--ink-2);border-radius:1px}
+.m-accent>span{background:var(--accent)}
+.m-base>span{background:var(--base-fill)}
+.delta{font-size:12px;font-weight:600;font-variant-numeric:tabular-nums}
+.delta-pos{color:var(--delta-good)}
+.delta-neg{color:var(--critical)}
+.delta-zero{color:var(--ink-3)}
+details.section{border-top:1px solid var(--grid);padding-top:10px}
+details.section>summary{cursor:pointer;font-size:12px;font-weight:600;letter-spacing:.04em;text-transform:uppercase;
+  color:var(--ink-2)}
+details.section[open]>summary{margin-bottom:8px}
+.arm{display:flex;flex-direction:column;gap:8px;padding:6px 0}
+.arm+.arm{border-top:1px dashed var(--grid);margin-top:4px;padding-top:12px}
+.arm-head,.run-head{display:flex;align-items:baseline;gap:10px;flex-wrap:wrap}
+.arm-label{font-size:13px;font-weight:600}
+.run{border:1px solid var(--grid);border-radius:8px;padding:10px 12px;display:flex;flex-direction:column;gap:8px}
+.run-title{font-size:12px;font-weight:600;color:var(--ink-2)}
+.run-error{border-left:2px solid var(--critical);padding:4px 10px;font-size:13px;background:var(--inset);border-radius:4px}
+.run-error.aborted{border-left-color:var(--warning)}
+.notices{margin:0;padding-left:18px;font-size:12px;color:var(--warning)}
+.graders{display:flex;flex-direction:column;gap:2px}
+details.grader>summary{cursor:pointer;display:flex;align-items:baseline;gap:8px;padding:3px 4px;border-radius:6px;
+  list-style:none}
+details.grader>summary::-webkit-details-marker{display:none}
+details.grader>summary:hover{background:var(--inset)}
+.grader-body{padding:4px 4px 8px 22px;display:flex;flex-direction:column;gap:6px}
+.explanation{margin:0;white-space:pre-wrap;overflow-wrap:anywhere}
+.chip{display:inline-block;font-size:11px;font-weight:600;padding:0 7px;border-radius:999px;white-space:nowrap;
+  border:1px solid currentColor}
+.chip-pass{color:var(--good)}
+.chip-fail{color:var(--critical)}
+.badge{font-size:11px;padding:0 6px;border-radius:4px;background:var(--inset);color:var(--ink-2);white-space:nowrap}
+.badge-ind{color:var(--accent)}
+.grader-name{font-weight:600;font-size:13px}
+.votes{letter-spacing:.2em}
+.v-pass{color:var(--good)}.v-fail{color:var(--critical)}
+.kv{font-size:12px;color:var(--ink-2)}
+pre{margin:0;padding:8px 10px;background:var(--inset);border-radius:6px;white-space:pre-wrap;overflow-wrap:anywhere;
+  font:12px/1.5 ui-monospace,"SF Mono",Menlo,Consolas,monospace;max-height:480px;overflow:auto}
+pre.md{font:13px/1.55 system-ui,-apple-system,"Segoe UI",sans-serif;max-height:none}
+details.clip>summary{list-style:none;cursor:pointer}
+details.clip>summary::-webkit-details-marker{display:none}
+details.clip>summary pre::after{content:"  ▸ show all";color:var(--accent);font-family:system-ui,sans-serif}
+details.clip[open]>summary{display:none}
+details.trace{border:1px solid var(--grid);border-radius:6px;padding:6px 10px}
+details.trace>summary{cursor:pointer;font-size:12px}
+.trace-title{font-weight:600;color:var(--ink-2)}
+.trace-tools{display:flex;gap:12px;align-items:center;justify-content:space-between;font-size:12px;color:var(--ink-2);
+  margin:6px 0}
+.trace-missing{padding:2px 0}
+.hl-count{color:var(--warning)}
+.timeline{list-style:none;margin:0;padding:0 0 0 12px;border-left:2px solid var(--grid);display:flex;flex-direction:column;
+  gap:6px}
+.ev{position:relative;padding:3px 8px;border-radius:6px;font-size:13px}
+.ev::before{content:"";position:absolute;left:-18px;top:10px;width:10px;height:10px;border-radius:50%;
+  background:var(--surface);border:2px solid var(--grid)}
+.ev-tool::before{border-color:var(--accent)}
+.ev-text::before,.ev-prompt::before{border-color:var(--ink-3)}
+.ev-hl{background:var(--hl)}
+.ev-hl::before{border-color:var(--warning)}
+.ev-err::before{border-color:var(--critical)}
+.ev-kind{font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:.05em;color:var(--ink-3);margin-right:4px}
+.ev-thinking pre{font-style:italic;color:var(--ink-2)}
+.ev details>summary{cursor:pointer}
+.tool-name{font:600 12px ui-monospace,"SF Mono",Menlo,Consolas,monospace}
+.tool-io{display:flex;flex-direction:column;gap:4px;padding:6px 0 2px}
+.io-label{font-size:11px;font-weight:600;color:var(--ink-3);text-transform:uppercase;letter-spacing:.05em}
+.src{font-size:11px;font-weight:600;padding:0 6px;border-radius:4px;color:var(--mock);border:1px solid currentColor}
+.src-fault{color:var(--warning)}
+.ev summary .src,.ev summary .chip,.ev summary .muted{margin-left:6px}
+.src-denied{color:var(--critical)}
+.timeline.tools-only>.ev:not(.ev-tool):not(.ev-hl){display:none}
+.grader-def{display:flex;flex-direction:column;gap:6px;padding:6px 0}
+.grader-def+.grader-def{border-top:1px dashed var(--grid)}
+.grader-def-head{display:flex;gap:8px;align-items:baseline;flex-wrap:wrap}
+footer{color:var(--ink-3);font-size:12px;text-align:center}
+@media print{details>summary{list-style:none}.toolbar,.trace-tools{display:none}}
+</style>
+</head>
+<body>
+<div class="wrap">
+<header>
+<div class="eyebrow">Plugin eval report</div>
+<h1>{{ v.title }}</h1>
+{% if v.verdict.two_arm %}
+<p class="verdict">Plugin effect: <span class="delta {{ v.verdict.cls }}">{{ v.verdict.delta }}</span> {{ v.verdict.rest }}</p>
+{% else %}
+<p class="verdict">{{ v.verdict.text }}</p>
+{% endif %}
+<div class="meta">
+<span class="mono">{{ v.root }}</span>
+{% for m in v.meta %}<span class="num">{{ m }}</span>
+{% endfor %}
+</div>
+</header>
+{% for chip, text in v.banners %}
+<div class="banner"><span class="chip-warn">{{ chip }}</span><span>{{ text }}</span></div>
+{% endfor %}
+<section class="tiles">
+{% for t in v.tiles %}
+<div class="tile{% if t.hero %} hero{% endif %}"><span class="label">{{ t.label }}</span><span class="value num {{ t.cls }}">{{ t.value }}</span><span class="sub">{{ t.sub }}</span></div>
+{% endfor %}
+</section>
+<details class="section legend">
+<summary>How to read this report</summary>
+<ul class="note">
+<li>A run's score is the weighted fraction of its scored graders that passed; a "perfect" run passed every grader.</li>
+<li>A case's score is the mean of its runs; a case passes when its score is at or above the {{ v.threshold|pct }} threshold (the tick on each case bar).</li>
+<li>The suite score is the mean of the per-case scores. Judge votes are independent samples of the LLM judge; the majority decides.</li>
+<li>"With plugin" and "Baseline" runs are identical except for the plugin being loaded; Δ is the with-plugin score minus the baseline score.</li>
+<li>Graders marked "plugin-fired indicator" don't count toward the score. In the trace, highlighted steps were answered by a mock, an injected fault or a simulated user, not the real server.</li>
+</ul>
+</details>
+<div class="toolbar"><button type="button" data-act="expand">Expand all</button><button type="button" data-act="collapse">Collapse all</button></div>
+{% for c in v.cases %}
+<article class="case{% if c.regressed %} case-regressed{% endif %}" id="{{ c.id }}">
+<div class="case-head">
+<h2>{{ c.name }}</h2>
+<span class="muted mono">{{ c.dir }}</span>
+<span class="spacer"></span>
+{% if c.delta is not none %}<span class="delta {{ c.delta|delta_cls }}">{{ c.delta|pts }} pts</span>{% endif %}
+<span class="muted">with plugin</span>
+{{ meter(c.score, "m-accent", v.threshold) }}
+<span class="num case-score">{{ c.score|pct }}</span>
+<span class="chip {{ 'chip-pass' if c.passed else 'chip-fail' }}">{{ "✓ pass" if c.passed else "✗ below threshold" }}</span>
+</div>
+<div class="muted">{{ c.meta }}{% if c.score_without is not none %} · baseline {{ c.score_without|pct }}{% endif %}</div>
+{% if c.single_arm_reason %}<div class="note">Single arm (no Δ): {{ c.single_arm_reason }}</div>{% endif %}
+{% if c.extensions %}
+<details class="ext"><summary class="tags">{% for x in c.extensions %}<span class="badge">{{ x }}</span>{% endfor %}</summary><pre class="json">{{ c.extensions_json }}</pre></details>
+{% endif %}
+<details class="section" open>
+<summary>Results</summary>
+{% for arm in c.arms %}
+<section class="arm">
+<div class="arm-head">
+<span class="arm-label">{{ arm.label }}</span>
+{{ meter(arm.score, arm.cls) }}
+<span class="num">{{ arm.score|pct }}</span>
+<span class="muted num">{{ arm.perfect|pct }} of runs perfect</span>
+</div>
+{% for r in arm.runs %}
+<div class="run">
+<div class="run-head">
+<span class="run-title">{{ r.title }}</span>
+{{ meter(r.score, arm.cls) }}
+<span class="num">{{ r.score|pct }}</span>
+<span class="muted num">{{ r.meta }}</span>
+</div>
+{% if r.error %}<div class="run-error"><strong>{{ "API error" if r.api_error else "Error" }}:</strong> {{ r.error }}{% if r.api_error %} <span class="muted">(scored 0 without grading)</span>{% endif %}</div>{% endif %}
+{% if r.aborted %}<div class="run-error aborted"><strong>Aborted by mock:</strong> {{ r.aborted }} <span class="muted">(scores 0)</span></div>{% endif %}
+{% if r.skipped_paid %}<div class="note">Judge graders skipped by the cost ceiling — score not comparable.</div>{% endif %}
+{% if r.notices %}<ul class="notices">{% for n in r.notices %}<li>{{ n }}</li>{% endfor %}</ul>{% endif %}
+{% if r.graders %}
+<div class="graders">
+{% for g in r.graders %}
+<details class="grader"{% if g.open %} open{% endif %}>
+<summary><span class="chip {{ 'chip-pass' if g.passed else 'chip-fail' }}">{{ "✓ pass" if g.passed else "✗ fail" }}</span> <span class="grader-name">{{ g.name }}</span>
+{% if not g.scored %}<span class="badge badge-ind" title="Not counted in the score">plugin-fired indicator</span>{% endif %}
+{% if g.with_only %}<span class="badge">with-only</span>{% endif %}
+{% if g.weight != 1 %}<span class="muted">weight {{ g.weight }}</span>{% endif %}</summary>
+<div class="grader-body">
+{% if g.explanation %}<p class="explanation">{{ g.explanation }}</p>{% endif %}
+{% if g.votes is not none %}<div class="kv">Judge votes <span class="votes">{% for x in g.votes %}<span class="{{ 'v-pass' if x else 'v-fail' }}">{{ "✓" if x else "✗" }}</span>{% endfor %}</span></div>{% endif %}
+{% if g.evidence %}<details><summary class="kv">Evidence (what the judge was shown)</summary><pre>{{ g.evidence }}</pre></details>{% endif %}
+</div>
+</details>
+{% endfor %}
+</div>
+{% endif %}
+{{ trace_view(r.trace) }}
+</div>
+{% endfor %}
+</section>
+{% endfor %}
+</details>
+<details class="section" open>
+<summary>Prompt</summary>
+<pre class="md">{{ c.prompt }}</pre>
+</details>
+<details class="section" open>
+<summary>Graders — what "good" means for this case</summary>
+{% for g in c.graders %}
+<div class="grader-def">
+<div class="grader-def-head"><span class="grader-name">{{ g.name }}</span><span class="badge">{{ g.type }}</span>
+{% if g.weight != 1 %}<span class="muted">weight {{ g.weight }}</span>{% endif %}
+{% for k, val in g.config %}<span class="muted mono">{{ k }}: {{ val }}</span>{% endfor %}</div>
+{% if g.markdown %}<pre class="md">{{ g.markdown }}</pre>{% endif %}
+</div>
+{% endfor %}
+</details>
+</article>
+{% else %}
+<p class="note">No cases.</p>
+{% endfor %}
+<footer>Generated by {{ v.runner_label }} · schema v{{ v.schema }} · scores are not comparable across different suites</footer>
+</div>
+<script>
+(function(){
+  var bar=document.querySelector('.toolbar');
+  if(bar)bar.addEventListener('click',function(e){
+    var b=e.target&&e.target.closest('button');if(!b)return;
+    var open=b.dataset.act==='expand';
+    document.querySelectorAll('details.section,details.grader,details.trace').forEach(function(d){d.open=open});
+  });
+  document.querySelectorAll('input.only-tools').forEach(function(cb){
+    cb.addEventListener('change',function(){
+      var tl=cb.closest('details.trace').querySelector('.timeline');
+      if(tl)tl.classList.toggle('tools-only',cb.checked);
+    });
+  });
+  window.addEventListener('beforeprint',function(){
+    document.querySelectorAll('details').forEach(function(d){if(!d.open){d.dataset.printOpened='1';d.open=true}});
+  });
+  window.addEventListener('afterprint',function(){
+    document.querySelectorAll('details[data-print-opened]').forEach(function(d){d.open=false;delete d.dataset.printOpened});
+  });
+})();
+</script>
+</body>
+</html>

@@ -1,0 +1,8 @@
+{
+  "mcpServers": {
+    "tracker": {
+      "url": "${DEMO_TRACKER_URL:-http://127.0.0.1:9999/mcp}",
+      "headers": { "Authorization": "Bearer ${DEMO_TRACKER_TOKEN}" }
+    }
+  }
+}

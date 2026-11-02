@@ -1,0 +1,8 @@
+{
+  "name": "demo-plugin",
+  "version": "0.1.0",
+  "experimental": { "evals": "quality/evals" },
+  "mcpServers": {
+    "local": { "command": "${CLAUDE_PLUGIN_ROOT}/servers/run.sh", "args": ["--root", "${CLAUDE_PLUGIN_ROOT}"] }
+  }
+}

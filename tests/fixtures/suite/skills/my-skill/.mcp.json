@@ -1,0 +1,1 @@
+{"mcpServers": {"shop": {"type": "http", "url": "${SHOP_URL:-http://127.0.0.1:8890/api/mcp}", "headers": {"Authorization": "Bearer ${SHOP_TOKEN}"}}}}

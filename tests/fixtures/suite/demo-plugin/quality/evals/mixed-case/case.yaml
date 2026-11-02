@@ -1,0 +1,13 @@
+schema_version: "1.1"
+name: yaml-name
+tags: [yaml-tag]
+runs: 5
+expected_outcome: yaml outcome
+execution:
+  max_turns: 30
+  prompt: prompt from yaml (ignored, prompt.md body wins)
+graders:
+  - name: a-from-yaml
+    type: tool_order
+    before: Skill
+    after: { tool: Write, input_match: 'CHANGELOG' }

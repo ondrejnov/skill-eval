@@ -1,0 +1,27 @@
+# Konfigurace skilleval (zkopíruj jako skilleval.toml). ${VAR} a ${VAR:-default} se berou z env / env_files.
+# env_files = [".env.local"]   # soubor musí existovat
+
+[models]
+default = "haiku"
+judge = "haiku"   # jako Claude Code (model pro background tasks); přesnější: sonnet
+
+[models.aliases]
+haiku = "anthropic/claude-haiku-5.5"
+sonnet = "anthropic/claude-sonnet-5.5"
+opus = "anthropic/claude-opus-5.5"
+
+# [models.options]
+# "anthropic/claude-haiku-5.5" = { reasoning_effort = "low" }
+
+# Přepis MCP serveru z .mcp.json pluginu – token z env místo natvrdo.
+[mcp.servers.webstore]
+type = "http"
+url = "${WEBSTORE_MCP_URL:-http://127.0.0.1:8890/api/mcp}"
+headers = { Authorization = "Bearer ${WEBSTORE_MCP_TOKEN}" }
+
+# Profil (skilleval.yaml: mcp_profile: limited) – např. token uživatele s rights 5.
+[mcp.profiles.limited.servers.webstore]
+headers = { Authorization = "Bearer ${WEBSTORE_MCP_TOKEN_RIGHTS5}" }
+
+# [pricing]   # fallback, když OpenRouter nevrátí usage.cost (USD / 1M tokenů)
+# "anthropic/claude-haiku-5.5" = { input = 0.1, output = 0.5 }

@@ -1,0 +1,38 @@
+schema_version: "1.1"
+name: changelog-from-diff
+description: Whole case in YAML
+tags: [smoke]
+runs: 2
+expected_outcome: A changelog entry is written.
+context:
+  scaffold_script: fixture.sh
+  add_dirs: [resources]
+execution:
+  model: haiku
+  max_turns: 15
+  timeout_seconds: 600
+  allowed_tools: [Read, Write]
+  append_system_prompt: Be brief.
+  env:
+    EVAL_MODE: strict
+    EVAL_LEVEL: 3
+  prompt: |
+
+    Write a changelog entry into CHANGELOG.md.
+
+graders:
+  - name: file-written
+    type: file_exists
+    path: CHANGELOG.md
+  - name: mentions-version
+    type: regex
+    pattern: '\d+\.\d+\.\d+'
+    flags: i
+    match: "count:1"
+    target: { source: file, path: CHANGELOG.md }
+    weight: 2
+  - name: judged
+    type: llm
+    criteria: PASS if the entry is concise.
+    focus: trace
+    arm: both

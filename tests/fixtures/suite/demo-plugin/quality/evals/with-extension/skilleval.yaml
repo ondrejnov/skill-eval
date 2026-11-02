@@ -1,0 +1,7 @@
+mcp_profile: limited
+tags_extra: [db-write]
+faults:
+  - tool: create_issue
+    call: 1
+    error: true
+    body: '{"error": "conflict"}'

@@ -1,0 +1,42 @@
+[tool.poetry]
+name = "skilleval"
+version = "0.1.0"
+description = "Spouštěč evalů skillů/pluginů ve formátu Claude Code plugin evals přes OpenRouter (LangGraph)"
+authors = ["Ondrej Novak <ondrej.novak@reactis.cz>"]
+packages = [{ include = "skilleval" }]
+
+[tool.poetry.dependencies]
+python = ">=3.13,<4"
+pydantic = "^2.9"
+pyyaml = "^6.0"
+jinja2 = "^3.1"
+httpx = "^0.28"
+python-dotenv = "^1.0"
+langgraph = "^1.0"
+langchain-core = "^1.0"
+langchain-openai = "^1.0"
+mcp = "^1.20"
+
+[tool.poetry.group.dev.dependencies]
+pytest = "^8.3"
+pytest-asyncio = "^0.24"
+ruff = "^0.8"
+
+[tool.poetry.scripts]
+skilleval = "skilleval.cli:main"
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+testpaths = ["tests"]
+
+[tool.ruff]
+line-length = 120
+target-version = "py313"
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I", "UP", "B"]
+ignore = ["E501", "UP038"]
+
+[build-system]
+requires = ["poetry-core>=1.0.0"]
+build-backend = "poetry.core.masonry.api"
